@@ -9,6 +9,7 @@ from .task import Task, Result
 
 if TYPE_CHECKING:
     import multiprocessing
+    from multiprocessing.connection import Connection
     try:
         import torch
         Queue:TypeAlias = Union[torch.multiprocessing.Queue, multiprocessing.Queue]
@@ -35,7 +36,7 @@ class Worker:
         self.mp_context:str = mp_context
         self.result_queue:Queue[Result] = result_queue
         self.task_queue:Queue[Task] = mp.Queue()
-        self.change_device_cmd_queue:Queue = mp.Queue()
+        self.change_device_cmd_connection:Optional[Connection] = None
         self.is_working:bool = False
         self.module_sizes:Dict[str, int] = {}
         self.n_finished_tasks:int = 0
@@ -47,8 +48,11 @@ class Worker:
 
     @property
     def rss(self)->int:
-        p = psutil.Process(self.process.pid)
-        return p.memory_info().rss
+        try:
+            p = psutil.Process(self.process.pid)
+            return p.memory_info().rss
+        except:
+            return 0
 
     def overlap_modules_size(self, task:Task)->int:
         result = 0
@@ -72,31 +76,33 @@ class Worker:
         self.task_queue.put(task)
 
     def change_device(self, device:str)->None:
-        self.change_device_cmd_queue.put(device)
+        self.change_device_cmd_connection.send(device)
 
     def stop(self)->None:
         self.task_queue.put(None)
-        self.change_device_cmd_queue.put(None)
+        self.change_device_cmd_connection.send(None)
 
         self.task_queue.close()
-        self.change_device_cmd_queue.close()
+        self.change_device_cmd_connection.close()
 
     def start(self):
         if self.is_torch:
             import torch.multiprocessing as mp
+            self.change_device_cmd_connection, con2 = mp.Pipe()
             self.process:mp.Process = mp.Process(
                 target=Worker.run,
-                args=(self.task_queue, self.result_queue, self.change_device_cmd_queue),
+                args=(self.task_queue, self.result_queue, con2),
                 kwargs={"initializer": self.initializer, "initargs": self.initargs, "initkwargs": self.initkwargs},
                 name=f"SmartProcessPool.worker:{self.index}",
                 daemon=True
             )
         else:
             import multiprocessing as mp
+            self.change_device_cmd_connection, con2 = mp.Pipe()
             ctx = mp.get_context(self.mp_context)
             self.process:mp.Process = ctx.Process(
                 target=Worker.run,
-                args=(self.task_queue, self.result_queue, self.change_device_cmd_queue),
+                args=(self.task_queue, self.result_queue, con2),
                 kwargs={"initializer": self.initializer, "initargs": self.initargs, "initkwargs": self.initkwargs},
                 name=f"SmartProcessPool.worker:{self.index}",
                 daemon=True
@@ -106,7 +112,7 @@ class Worker:
 
     def restart(self)->None:
         self.task_queue.put(None)
-        self.change_device_cmd_queue.put(None)
+        self.change_device_cmd_connection.send(None)
         self.process.join()
         self.n_finished_tasks:int = 0
         self.start()
@@ -122,11 +128,11 @@ class Worker:
     change_device_thread = None
 
     @staticmethod
-    def _changing_device(cmd_queue:Queue[Optional[str]]):
+    def _changing_device(cmd_connection:Connection[Optional[str]]):
         while True:
-            device = cmd_queue.get()
+            device = cmd_connection.recv()
             if device is None:
-                cmd_queue.close()
+                cmd_connection.close()
                 break
 
             if Worker.current_func is None or Worker.current_func._device != "cpu":
@@ -137,7 +143,7 @@ class Worker:
 
     @staticmethod
     def run(
-        task_queue:Queue[Task], result_queue:Queue[Result], change_device_cmd_queue:Queue[Optional[str]],
+        task_queue:Queue[Task], result_queue:Queue[Result], change_device_cmd_connection:Connection[Optional[str]],
         initializer:Optional[Callable[..., Any]], initargs:Tuple[Any, ...], initkwargs:Optional[Dict[str, Any]]    
     ):
         if initializer is not None:
@@ -147,7 +153,7 @@ class Worker:
             initializer(*initargs, **initkwargs)
         
         Worker.func_device_lock = threading.Lock()
-        Worker.change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_queue,), daemon=True)
+        Worker.change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_connection,), daemon=True)
         Worker.change_device_thread.start()
 
         def device(self):

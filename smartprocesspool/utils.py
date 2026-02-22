@@ -1,12 +1,13 @@
 from __future__ import annotations
 import sys
 import gc
-from types import ModuleType
 from .asizeof import asizeof
-from typing import Set, Dict
 import warnings
 import functools
 from enum import IntEnum
+import itertools
+from types import ModuleType
+from typing import Set, Dict, Iterable
 
 
 class DataSize(IntEnum):
@@ -62,3 +63,12 @@ def get_module_sizes(module:ModuleType)->Dict[str, int]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return _get_module_sizes(module, {"sys": sys_size})
+
+
+def batched(iterable:Iterable, chunksize:int):
+    iterator = iter(iterable)
+    while True:
+        batch = list(itertools.islice(iterator, chunksize))
+        if not batch:
+            break
+        yield batch

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Dict, List, Tuple, Any, Optional, Callable
+    from typing import Dict, List, Tuple, Any, Optional, Callable, Union, Iterable
     from concurrent.futures import Future
 
     from .task import Task, Result
@@ -97,6 +97,76 @@ class SmartProcessPool:
             
             self._put_task(task, worker)
             return future
+
+    @staticmethod
+    def _result_iterator(futures:List[Future], end_time:Optional[float]):
+        from concurrent.futures._base import _result_or_cancel
+        import time
+
+        try:
+            futures.reverse()
+            while futures:
+                if end_time is None:
+                    yield _result_or_cancel(futures.pop())
+                else:
+                    yield _result_or_cancel(futures.pop(), end_time - time.monotonic())
+        finally:
+            for future in futures:
+                future.cancel()
+
+    def map(
+        self, func:Callable[..., Any],
+        args_iterables:Iterable[Tuple[Any, ...]],
+        need_cpu_cores:Union[int, Iterable[int]]=1,
+        need_cpu_mem:Union[int, Iterable[int]]=0,
+        need_gpu_cores:Union[int, Iterable[int]]=0,
+        need_gpu_mem:Union[int, Iterable[int]]=0,
+        timeout:Optional[Union[float, int]]=None,
+        chunksize:int=1
+    ):
+
+        from functools import partial
+        import itertools
+        import time
+        from collections.abc import Iterable
+        from concurrent.futures.process import _process_chunk, _chain_from_iterable_of_lists
+        from .utils import batched
+
+        if not isinstance(need_cpu_cores, Iterable):
+            need_cpu_cores = itertools.repeat(need_cpu_cores)
+
+        if not isinstance(need_cpu_mem, Iterable):
+            need_cpu_mem = itertools.repeat(need_cpu_mem)
+
+        if not isinstance(need_gpu_cores, Iterable):
+            need_gpu_cores = itertools.repeat(need_gpu_cores)
+
+        if not isinstance(need_gpu_mem, Iterable):
+            need_gpu_mem = itertools.repeat(need_gpu_mem)
+
+        if chunksize < 1:
+            raise ValueError("chunksize must be >= 1.")
+
+        end_time = None
+        if timeout is not None:
+            end_time = timeout + time.monotonic()
+
+        target_func = partial(_process_chunk, func)
+        futures:List[Future] = []
+        iterator = zip(args_iterables, need_cpu_cores, need_cpu_mem, need_gpu_cores, need_gpu_mem)
+        for batch in batched(iterator, chunksize):
+            args_batch, cpu_cores_batch, cpu_mem_batch, gpu_cores_batch, gpu_mem_batch = zip(*batch)
+            futures.append(
+                self.submit(
+                    target_func, args=args_batch,
+                    need_cpu_cores=max(cpu_cores_batch),
+                    need_cpu_mem=max(cpu_mem_batch),
+                    need_gpu_cores=max(gpu_cores_batch),
+                    need_gpu_mem=max(gpu_mem_batch)
+                )
+            )
+
+        return _chain_from_iterable_of_lists(SmartProcessPool._result_iterator(futures, end_time))
 
     def _put_task(self, task:Task, worker:Worker)->None:
         self._sys_info.cpu_cores_free -= task.need_cpu_cores
