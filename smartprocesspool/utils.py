@@ -1,14 +1,15 @@
 from __future__ import annotations
 import sys
-import gc
 from .asizeof import asizeof
+# from pympler.asizeof import asizeof
 import warnings
 import functools
 from enum import IntEnum
 import itertools
 from multiprocessing.connection import _ConnectionBase
+from collections import deque
 from types import ModuleType
-from typing import Set, Dict, Iterable
+from typing import Dict, Iterable, Any
 
 
 class DataSize(IntEnum):
@@ -21,49 +22,45 @@ class DataSize(IntEnum):
     
 
 asizeof = functools.lru_cache(maxsize=None)(asizeof)
-sys_size = asizeof(sys)
 
 def _good_module_name(module_name:str, module_sizes:Dict[str, int])->bool:
     return (
+        module_name and 
         module_name not in module_sizes and
         not module_name.startswith('builtins') and
         module_name in sys.modules
     )
 
 def _get_module_sizes(module:ModuleType, module_sizes:Dict[str, int])->Dict[str, int]:
-    if module.__name__ in module_sizes:
-        return module_sizes
-    
     module_sizes[module.__name__] = asizeof(module)
+    stack = deque([module])
 
-    referents = gc.get_referents(module.__dict__)
-
-    module_names:Set[str] = set()
-
-    for obj in referents:
-        if isinstance(obj, ModuleType) and _good_module_name(obj.__name__, module_sizes):
-            module_names.add(obj.__name__)
+    while stack:
+        current_module = stack.popleft()
         
-        elif hasattr(obj, '__module__') and obj.__module__:
-            if _good_module_name(obj.__module__, module_sizes):
-                module_names.add(obj.__module__)
-        
-        elif hasattr(obj, '__class__'):
-            cls = obj.__class__
-            if hasattr(cls, '__module__') and cls.__module__:
-                if _good_module_name(cls.__module__, module_sizes):
-                    module_names.add(cls.__module__)
+        for obj in current_module.__dict__.values():
+            candidate_name = ""
+            if isinstance(obj, ModuleType) and hasattr(obj, '__name__'):
+                candidate_name = obj.__name__
+            
+            elif hasattr(obj, '__module__'):
+                candidate_name = obj.__module__
+            
+            elif hasattr(obj, '__class__') and hasattr(obj.__class__, '__module__'):
+                candidate_name = obj.__class__.__module__
 
-    for module_name in module_names:
-        _get_module_sizes(sys.modules[module_name], module_sizes)
-
+            if _good_module_name(candidate_name, module_sizes):
+                sub_module = sys.modules[candidate_name]
+                module_sizes[candidate_name] = asizeof(sub_module)
+                stack.append(sub_module)
+    
     return module_sizes
 
 @functools.lru_cache(maxsize=None)
 def get_module_sizes(module:ModuleType)->Dict[str, int]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return _get_module_sizes(module, {"sys": sys_size})
+        return _get_module_sizes(module, {"sys": 0})
 
 
 def batched(iterable:Iterable, chunksize:int):
