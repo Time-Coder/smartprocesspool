@@ -183,7 +183,7 @@ class SmartProcessPool:
     def _put_task(self, task:Task, worker:Worker)->None:
         self._sys_info.cpu_cores_free -= task.need_cpu_cores
 
-        worker_rss = worker.rss
+        worker_rss = worker.cached_rss
         task.mem_before_enter = worker_rss
         real_need_cpu_mem = max(0, task.need_cpu_mem - worker_rss)
         self._sys_info.cpu_mem_free -= real_need_cpu_mem
@@ -233,7 +233,7 @@ class SmartProcessPool:
                     worker.restart()
 
                 self._sys_info.cpu_cores_free += task.need_cpu_cores
-                hold_cpu_mem = max(worker.rss - task.mem_before_enter, 0)
+                hold_cpu_mem = max(worker.cached_rss - task.mem_before_enter, 0)
                 self._sys_info.cpu_mem_free += max(task.need_cpu_mem - hold_cpu_mem, 0)
                 task_gpu_id:int = task.gpu_id
                 if task_gpu_id != -1:
@@ -282,7 +282,7 @@ class SmartProcessPool:
                 continue
 
             current_overlap_size = worker.overlap_modules_size(task)
-            if not worker.is_working and (best_worker is None or current_overlap_size > max_overlap_size):
+            if best_worker is None or current_overlap_size > max_overlap_size:
                 max_overlap_size = current_overlap_size
                 best_worker = worker
             
@@ -335,7 +335,7 @@ class SmartProcessPool:
             task.device = None
             return None
         
-        real_need_cpu_mem:int = task.need_cpu_mem - worker.rss
+        real_need_cpu_mem:int = task.need_cpu_mem - worker.cached_rss
         if real_need_cpu_mem > self._sys_info.cpu_mem_free:
             task.device = None
             return None

@@ -46,7 +46,9 @@ class Worker:
         conn1, conn2 = mp.Pipe()
         self.change_device_cmd_connection:Optional[_ConnectionBase] = conn1
         self.sub_change_device_cmd_connection:Optional[_ConnectionBase] = conn2
-        self.is_working:bool = False
+        self._is_working:bool = False
+        self._is_rss_dirty:bool = True
+        self._cached_rss:int = 0
         self.module_sizes:Dict[str, int] = {}
         self.n_finished_tasks:int = 0
         self.initializer:Optional[Callable[..., Any]] = initializer
@@ -56,10 +58,20 @@ class Worker:
         self.start()
 
     @property
+    def cached_rss(self)->int:
+        if self._is_working:
+            return self.rss
+            
+        if self._is_rss_dirty:
+            self._cached_rss = self.rss
+            self._is_rss_dirty = False
+
+        return self._cached_rss
+
+    @property
     def rss(self)->int:
         try:
-            p = psutil.Process(self.process.pid)
-            return p.memory_info().rss
+            return self.process_info.memory_info().rss
         except:
             return 0
 
@@ -77,6 +89,16 @@ class Worker:
                 result += module_size
 
         return result
+
+    @property
+    def is_working(self)->bool:
+        return self._is_working
+
+    @is_working.setter
+    def is_working(self, is_working:bool)->None:
+        if self._is_working != is_working:
+            self._is_working = is_working
+            self._is_rss_dirty = True
 
     def add_task(self, task:Task)->None:
         self.is_working = True
@@ -110,6 +132,7 @@ class Worker:
             daemon=True
         )
         self.process.start()
+        self.process_info = psutil.Process(self.process.pid)
 
     def restart(self)->None:
         comm_put(self.task_queue, None)
