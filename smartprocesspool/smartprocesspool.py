@@ -1,20 +1,20 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Tuple, Any, Optional, Callable, Union, Iterable
 
 if TYPE_CHECKING:
-    from typing import TypeAlias, Dict, List, Tuple, Any, Optional, Callable, Union, Iterable
     from concurrent.futures import Future
-    from multiprocessing.connection import _ConnectionBase
 
-    try:
-        import torch
-        ConnectionOrQueue:TypeAlias = Union[torch.multiprocessing.Queue, _ConnectionBase]
-    except ImportError:
-        ConnectionOrQueue:TypeAlias = _ConnectionBase
-
-    from .task import Task, Result
+    from .task import Task
     from .worker import Worker
 
+
+class DataSize:
+    B = 1
+    KB = 1024 * B
+    MB = 1024 * KB
+    GB = 1024 * MB
+    TB = 1024 * GB
+    PB = 1024 * TB
 
 class SmartProcessPool:
 
@@ -30,8 +30,10 @@ class SmartProcessPool:
         import threading
         if torch:
             import torch.multiprocessing as mp
+            from torch.multiprocessing.queue import SimpleQueue
         else:
             import multiprocessing as mp
+            from multiprocessing import SimpleQueue
 
         from .sysinfo import SysInfo
         
@@ -47,13 +49,7 @@ class SmartProcessPool:
         self._initializer:Optional[Callable[..., Any]] = initializer
         self._initargs:Tuple[Any, ...] = initargs
         self._initkwargs:Optional[Dict[str, Any]] = initkwargs
-        if torch:
-            self._result_queue:ConnectionOrQueue[Result] = mp.Queue()
-            self._sub_result_queue:ConnectionOrQueue[Result] = self._result_queue
-        else:
-            conn1, conn2 = mp.Pipe()
-            self._result_queue:ConnectionOrQueue[Result] = conn1
-            self._sub_result_queue:ConnectionOrQueue[Result] = conn2
+        self._result_queue:SimpleQueue[Optional[Tuple[str, bool, Any]]] = SimpleQueue()
 
         self._workers:List[Worker] = []
         self._tasks:Dict[str, Task] = {}
@@ -199,7 +195,7 @@ class SmartProcessPool:
         from .worker import Worker
 
         worker = Worker(
-            len(self._workers), self._sub_result_queue, self._mp_context,
+            len(self._workers), self._result_queue, self._mp_context,
             initializer=self._initializer,
             initargs=self._initargs,
             initkwargs=self._initkwargs,
@@ -209,23 +205,21 @@ class SmartProcessPool:
         return worker
 
     def _collecting_result(self)->None:
-        from .utils import comm_get
-
         while not self._shutdown:
             try:
-                result:Result = comm_get(self._result_queue)
+                task_id, success, result = self._result_queue.get()
             except EOFError:
                 self._shutdown = True
                 break
 
             with self._lock:
-                future = self._futures.pop(result.task_id)
-                if result.success:
-                    future.set_result(result.result)
+                future = self._futures.pop(task_id)
+                if success:
+                    future.set_result(result)
                 else:
-                    future.set_exception(result.result)
+                    future.set_exception(result)
 
-                task = self._tasks.pop(result.task_id)
+                task = self._tasks.pop(task_id)
                 worker = self._workers[task.worker_index]
                 worker.is_working = False
                 worker.n_finished_tasks += 1
@@ -280,6 +274,9 @@ class SmartProcessPool:
         for worker in self._workers:
             if worker.is_working:
                 continue
+
+            if task.need_cpu_mem == 0:
+                return worker
 
             current_overlap_size = worker.overlap_modules_size(task)
             if best_worker is None or current_overlap_size > max_overlap_size:

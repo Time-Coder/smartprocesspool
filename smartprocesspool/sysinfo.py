@@ -1,5 +1,4 @@
 import psutil
-from .gpuinfos import GPUInfos
 from threading import Lock
 
 
@@ -25,6 +24,8 @@ class SysInfo:
         
     @property
     def gpu_infos(self):
+        from .gpuinfos import GPUInfos
+
         with self._lock:
             if self._gpu_infos_dirty:
                 self._gpu_infos = GPUInfos.snapshot("n_cores_free", "memory_free")
@@ -44,6 +45,6 @@ class SysInfo:
 
     def update(self):
         with self._lock:
-            self._cpu_core_free = (1 - psutil.cpu_percent() / 100) * psutil.cpu_count()
+            self._cpu_core_free = int((1 - psutil.cpu_percent() / 100) * psutil.cpu_count())
             self._cpu_mem_free = psutil.virtual_memory().available
             self._gpu_infos_dirty = True

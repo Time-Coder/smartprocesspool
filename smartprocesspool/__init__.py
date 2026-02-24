@@ -1,3 +1,2 @@
 
-from .smartprocesspool import SmartProcessPool
-from .utils import DataSize
+from .smartprocesspool import SmartProcessPool, DataSize

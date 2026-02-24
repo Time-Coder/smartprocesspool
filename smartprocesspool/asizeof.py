@@ -1282,11 +1282,6 @@ except NameError:  # missing
     pass
 
 try:  # MCCABE 19
-    import numpy as _numpy  # NumPy array, matrix, etc.
-    try:
-        _numpy_memmap = _numpy.memmap
-    except AttributeError:
-        _numpy_memmap = None
     try:
         from mmap import PAGESIZE as _PAGESIZE
         if _PAGESIZE < 1024:
@@ -1320,6 +1315,16 @@ try:  # MCCABE 19
         return ((nb + _PAGESIZE - 1) // _PAGESIZE) * _PAGESIZE
 
     def _numpy_kwds(obj):
+        if "numpy" in sys.modules:
+            _numpy = sys.modules["numpy"]
+            try:
+                _numpy_memmap = _numpy.memmap
+            except AttributeError:
+                _numpy_memmap = None
+        else:
+            _numpy = None
+            _numpy_memmap = None
+
         t = type(obj)
         # .nbytes is included in sys.sizeof size for most numpy
         # objects except for numpy.memmap (and for the latter it
@@ -1481,6 +1486,12 @@ del i, s, t
 def _typedef(obj, derive=False, frames=False, infer=False):  # MCCABE 25
     '''Create a new typedef for an object.
     '''
+
+    if "numpy" in sys.modules:
+        _numpy = sys.modules["numpy"]
+    else:
+        _numpy = None
+
     t =  type(obj)
     v = _Typedef(base=_basicsize(t, obj=obj),
                  kind=_kind_dynamic, type=t)
@@ -2724,6 +2735,11 @@ __all__ = [_nameof(_) for _ in (Asized, Asizer,  # classes
 if __name__ == '__main__':
 
     def _examples(**kwds):
+        if "numpy" in sys.modules:
+            _numpy = sys.modules["numpy"]
+        else:
+            _numpy = None
+
         '''*_Typedef* and size some examples.
         '''
         t = 2**99, _array('B', range(127)), _array('d', range(100))
