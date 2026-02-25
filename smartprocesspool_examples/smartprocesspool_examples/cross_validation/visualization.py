@@ -11,10 +11,18 @@ def plot_results(model_results:Dict[str, Any], stats:Dict[str, Any]):
     plt.rcParams["font.family"] = ["Microsoft YaHei", "Arial", "sans-serif"]
     plt.rcParams["axes.unicode_minus"] = False
     
-    x_pos = np.arange(len(model_results))
-    bar_width = 0.35
+    n_models = len(model_results)
+    n_folds = 5
+    x_pos = np.arange(n_models)
     
-    for fold_idx in range(5):
+    # 调整柱状图宽度和间距，使柱子整体居中对齐
+    total_width = 0.8  # 总宽度
+    bar_width = total_width / n_folds  # 每个柱子的宽度
+    
+    # 定义不同fold的颜色
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+    
+    for fold_idx in range(n_folds):
         fold_accuracies = []
         for module_result in model_results.values():
             if fold_idx < len(module_result):
@@ -22,8 +30,12 @@ def plot_results(model_results:Dict[str, Any], stats:Dict[str, Any]):
             else:
                 fold_accuracies.append(0)
         
-        ax.bar(x_pos + fold_idx * bar_width/5, fold_accuracies, 
-               bar_width/5, alpha=0.7, label=f'Fold {fold_idx+1}')
+        # 计算每个柱子的位置，使其整体居中
+        offset = (fold_idx - n_folds/2 + 0.5) * bar_width
+        ax.bar(x_pos + offset, fold_accuracies, 
+               bar_width, alpha=0.7, 
+               color=colors[fold_idx],
+               label=f'Fold {fold_idx+1}')
     
     means = [stat['mean'] for stat in stats.values()]
     stds = [stat['std'] for stat in stats.values()]

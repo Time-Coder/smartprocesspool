@@ -1,31 +1,61 @@
-import os
-import sys
-
-parent_folder = os.path.abspath(os.path.dirname(os.path.abspath(__file__)) + "/../..")
-sys.path.append(parent_folder)
-
 from smartprocesspool import SmartProcessPool, DataSize, limit_num_single_thread
 limit_num_single_thread()
 
-
-import torch.nn as nn
-from sklearn.model_selection import KFold
-import numpy as np
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
-import multiprocessing as mp
-import queue
-from collections import defaultdict
-from concurrent.futures import Future
-from typing import Dict
-
-import models
-from config import MAX_WORKERS
-from data_utils import prepare_data
-from model_utils import train_single_fold, ProgressInfo, TrainingResult
-from visualization import plot_results, print_results_table
+import click
 
 
-def main():
+@click.command(help=f"Use SmartProcessPool to do 5-fold cross validatation for 7 deep learning models for handwritten digit recognition task.")
+@click.option(
+    '--pool', default='smart', type=click.Choice(['smart', 'concurrent', 'multiprocessing']),
+    help="""\b
+choose process pool implementations:
+    smart            - smartprocesspool.SmartProcessPool
+    concurrent       - concurrent.futures.ProcessPoolExecutor
+    multiprocessing  - multiprocessing.Pool"""
+)
+@click.option(
+    '--max_workers', default=0, type=int,
+    help='max number of workers to use, 0 to use all available cores'
+)
+def main(pool:str="smart", max_workers:int=0):
+    import os
+
+    pool_name = "SmartProcessPool"
+    if pool == "smart":
+        pool_name = "SmartProcessPool"
+    elif pool == "concurrent":
+        pool_name = "concurrent.futures.ProcessPoolExecutor"
+    elif pool == "multiprocessing":
+        pool_name = "multiprocessing.Pool"
+
+    print(f"Use {pool_name} to do 5-fold cross validatation for 7 deep learning models for handwritten digit recognition task.")
+    print("Use `python -m smartprocesspool_examples.cross_validation --help` to see all options.")
+    print(f"See source code at folder {os.path.dirname(os.path.abspath(__file__))}")
+    print("\npreparing data...")
+    
+    try:
+        import torch.nn as nn
+    except ImportError:
+        print("PyTorch is not installed. Follow https://pytorch.org/ instructions to install PyTorch.")
+        exit(1)
+
+    from sklearn.model_selection import KFold
+    import numpy as np
+    from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+    import multiprocessing as mp
+    import queue
+    from collections import defaultdict
+    from concurrent.futures import Future
+    from typing import Dict
+
+    from . import models
+    from .data_utils import prepare_data
+    from .model_utils import train_single_fold, ProgressInfo, TrainingResult
+    from .visualization import plot_results, print_results_table
+
+    if max_workers == 0:
+        max_workers = None
+
     model_classes = [
         cls for cls in models.__dict__.values()
         if isinstance(cls, type) and issubclass(cls, nn.Module) and cls != nn.Module
@@ -52,24 +82,41 @@ def main():
     ) as progress:
         
         active_tasks = {}
+
+        if pool == "smart":
+            process_pool = SmartProcessPool(max_workers=max_workers, use_torch=True)
+        elif pool == "concurrent":
+            from concurrent.futures import ProcessPoolExecutor
+            process_pool = ProcessPoolExecutor(max_workers=max_workers)
+        elif pool == "multiprocessing":
+            import multiprocessing
+            process_pool = multiprocessing.Pool(processes=max_workers)
         
-        with SmartProcessPool(max_workers=MAX_WORKERS, use_torch=True) as pool:
+        with process_pool:
+            print("submitting training tasks...")
             futures_map:Dict[str, Future] = {}
             for task_args in tasks:
-                future = pool.submit(
-                    train_single_fold,
-                    args=task_args,
-                    need_cpu_cores=1,
-                    need_cpu_mem=1.1*DataSize.GB,
-                    need_gpu_cores=1000,
-                    need_gpu_mem=0.2*DataSize.GB
-                )
+                if pool == "smart":
+                    future = process_pool.submit(
+                        train_single_fold,
+                        args=task_args,
+                        need_cpu_cores=1,
+                        need_cpu_mem=1.1*DataSize.GB,
+                        need_gpu_cores=1000,
+                        need_gpu_mem=0.2*DataSize.GB
+                    )
+                elif pool == "concurrent":
+                    future = process_pool.submit(train_single_fold, *task_args)
+                elif pool == "multiprocessing":
+                    future = process_pool.apply_async(train_single_fold, args=task_args)
+
                 fold_idx = task_args[0]
                 model_class = task_args[1]
                 model_name = model_class.__name__
                 task_key = f"{model_name}_fold_{fold_idx}"
                 futures_map[task_key] = future
             
+            print(f"training all models in {pool_name} ...")
             finished_tasks = set()
             while True:
                 progress_info:ProgressInfo = progress_queue.get()
@@ -113,9 +160,15 @@ def main():
                 if len(finished_tasks) == len(futures_map):
                     break
     
+    print("analysing results...")
+
     model_results = defaultdict(list)
     for task_key, future in futures_map.items():
-        result:TrainingResult = future.result()
+        if pool in ["smart", "concurrent"]:
+            result:TrainingResult = future.result()
+        else:
+            result:TrainingResult = future.get()
+
         model_results[result.model_name].append(result.val_accuracy)
     
     stats = {}

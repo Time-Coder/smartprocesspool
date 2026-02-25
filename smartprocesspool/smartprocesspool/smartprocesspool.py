@@ -20,7 +20,7 @@ class DataSize:
 class SmartProcessPool:
 
     def __init__(
-        self, max_workers:Optional[int]=None, mp_context:str="spawn",
+        self, max_workers:int=0, mp_context:str="spawn",
         initializer:Optional[Callable[..., Any]]=None,
         initargs:Tuple[Any, ...]=(),
         initkwargs:Optional[Dict[str, Any]]=None,
@@ -43,7 +43,7 @@ class SmartProcessPool:
         from .sysinfo import SysInfo
         
 
-        if max_workers is None:
+        if not max_workers:
             max_workers = mp.cpu_count()
 
         self._max_tasks_per_child:Optional[int] = max_tasks_per_child

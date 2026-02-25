@@ -9,6 +9,3 @@ self_folder = os.path.dirname(os.path.abspath(__file__))
 
 DATA_ROOT = f'{self_folder}/data'
 DATASET_NAME = 'MNIST'
-
-# Process pool settings
-MAX_WORKERS = None

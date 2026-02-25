@@ -2,7 +2,7 @@ import os
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
-from config import DATA_ROOT, BATCH_SIZE
+from .config import DATA_ROOT, BATCH_SIZE
 
 
 def prepare_data():

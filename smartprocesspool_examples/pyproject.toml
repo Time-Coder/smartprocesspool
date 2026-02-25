@@ -3,9 +3,9 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "smartprocesspool"
+name = "smartprocesspool-examples"
 version = "0.1.0"
-description = "A smart multiprocessing pool implementation."
+description = "Examples for smartprocesspool."
 readme = "README.md"
 authors = [
     { name = "王炳辉", email = "binghui.wang@foxmail.com" }
@@ -17,15 +17,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "nvdia-ml-py",
-    "psutil",
-    "pympler"
-]
-
-[project.optional-dependencies]
-dev = [
-    "black>=21.0",
-    "flake8>=3.9",
+    "smartprocesspool",
+    "matplotlib",
+    "scikit-learn",
+    "numpy",
+    "rich",
+    "torchvision",
+    "click"
 ]
 
 [project.urls]
