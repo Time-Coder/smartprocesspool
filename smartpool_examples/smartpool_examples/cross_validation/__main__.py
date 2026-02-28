@@ -203,7 +203,7 @@ def main(pool:str="smart", max_workers:int=0):
             model_results[result.model_name].append(result.val_accuracy)
     elif pool == "ray":
         ray_results = ray.get(futures)
-        for result in joblib_results:
+        for result in ray_results:
             model_results[result.model_name].append(result.val_accuracy)
     
     print("analysing results...")
