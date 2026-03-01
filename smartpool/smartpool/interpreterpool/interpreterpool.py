@@ -177,6 +177,7 @@ class InterpreterPool:
         worker:Worker = task.worker
         worker.is_working = True
         worker.imported_modules.update(task.module_deps)
+        task.future.set_running_or_notify_cancel()
         worker.task_queue.put(task.info())
 
     def _add_worker(self)->Worker:

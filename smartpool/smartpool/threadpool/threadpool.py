@@ -222,6 +222,7 @@ class ThreadPool:
         
         worker:Worker = task.worker
         worker.is_working = True
+        task.future.set_running_or_notify_cancel()
         worker.task_queue.put(task)
 
     def _add_worker(self)->Worker:
