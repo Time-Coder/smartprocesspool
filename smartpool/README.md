@@ -24,13 +24,15 @@ pip install pysmartpool
 ```python
 from smartpool import ProcessPool
 
-# Create a process pool that automatically manages system resources
-with ProcessPool() as pool:
-    # Submit tasks with proper argument passing
-    futures = [pool.submit(expensive_computation, args=(arg,)) for arg in arguments]
-    
-    # Get results
-    results = [future.result() for future in futures]
+
+if __name__ == "__main__":
+    # Create a process pool that automatically manages system resources
+    with ProcessPool() as pool:
+        # Submit tasks with proper argument passing
+        futures = [pool.submit(expensive_computation, args=(arg,)) for arg in arguments]
+        
+        # Get results
+        results = [future.result() for future in futures]
 ```
 
 ### Resource-Aware Task Scheduling
@@ -38,21 +40,25 @@ with ProcessPool() as pool:
 ```python
 from smartpool import ProcessPool, DataSize
 
+
 # Tasks can specify their resource requirements
+# should defined in other file, can't defined in main module
 def memory_intensive_task(data):
     # Your computation here
     return processed_data
 
-with ProcessPool(use_torch=True) as pool:
-    # Pool automatically schedules tasks based on available memory
-    future = pool.submit(
-        memory_intensive_task, 
-        args=(large_dataset,),
-        need_cpu_cores=2,           # Request 2 CPU cores
-        need_cpu_mem=1*DataSize.GB, # Request 4GB RAM
-        need_gpu_cores=1024,        # Request 1024 CUDA cores (NOT percentage)
-        need_gpu_mem=1*DataSize.GB  # Request 2GB GPU memory
-    )
+
+if __name__ == "__main__":
+    with ProcessPool(use_torch=True) as pool:
+        # Pool automatically schedules tasks based on available memory
+        future = pool.submit(
+            memory_intensive_task, 
+            args=(large_dataset,),
+            need_cpu_cores=2,           # Request 2 CPU cores
+            need_cpu_mem=1*DataSize.GB, # Request 4GB RAM
+            need_gpu_cores=1024,        # Request 1024 CUDA cores (NOT percentage)
+            need_gpu_mem=1*DataSize.GB  # Request 2GB GPU memory
+        )
 ```
 
 ### PyTorch Training Hot Migration from CPU to GPU
@@ -72,6 +78,7 @@ limit_num_single_thread()
 
 import torch
 
+# should defined in other file, can't defined in main module
 def training_task():
     device = best_device() # <-- get best suitable device at init time
     old_device = device
@@ -86,11 +93,15 @@ def training_task():
                 move_optimizer_to(optimizer, device) # move optimizer to new device
                 old_device = device
             
-                do_other_things()
+            do_other_things()
 
-with ProcessPool(use_torch=True) as pool:
-    future = pool.submit(training_task, args=(model, optimizer, data))
+
+if __name__ == "__main__":
+    with ProcessPool(use_torch=True) as pool:
+        future = pool.submit(training_task, args=(model, optimizer, data))
 ```
+
+See more examples at [smartpool-examples](https://pypi.org/project/smartpool-examples/).
 
 ## API
 
