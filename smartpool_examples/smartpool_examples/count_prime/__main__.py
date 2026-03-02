@@ -1,11 +1,16 @@
 import os
-from smartpool import InterpreterPool
+import sys
 
-from .count_prime import count_prime
+self_folder = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+sys.path.append(self_folder)
+
+from smartpool import ProcessPool
+
+from count_prime import count_prime
 
 
 if __name__ == "__main__":
-    print("Use InterpreterPool to count prime numbers lower than 10000.")
+    print("Use ProcessPool to count prime numbers lower than 10000.")
     print(f"See source code at folder {os.path.dirname(os.path.abspath(__file__))}")
     
     tasks = []
@@ -15,7 +20,7 @@ if __name__ == "__main__":
         tasks.append((start, stop))
         start = stop
         
-    with InterpreterPool() as pool:
+    with ProcessPool() as pool:
         futures = []
         for task in tasks:
             future = pool.submit(count_prime, args=task)

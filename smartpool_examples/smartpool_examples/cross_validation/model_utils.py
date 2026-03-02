@@ -5,8 +5,8 @@ import torch.optim as optim
 import traceback
 from dataclasses import dataclass
 
-from .config import LEARNING_RATE, EPOCHS
-from .data_utils import create_data_loaders
+from config import LEARNING_RATE, EPOCHS
+from data_utils import create_data_loaders
 
 from smartpool import move_optimizer_to, best_device
 

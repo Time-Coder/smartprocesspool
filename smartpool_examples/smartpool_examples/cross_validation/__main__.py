@@ -12,8 +12,7 @@ import click
         'multiprocessing.Pool',
         'concurrent.futures.ProcessPoolExecutor',
         'concurrent.futures.ThreadPoolExecutor',
-        "joblib.Parallel(backend='locky')",
-        "joblib.Parallel(backend='multiprocessing')",
+        "joblib.Parallel(backend='loky')",
         "joblib.Parallel(backend='threading')",
         "ray"
     ]),
@@ -42,7 +41,7 @@ def main(pool:str="smart", max_workers:int=0):
     try:
         import torchvision
     except ImportError:
-        print("torchvision is not installed. Follow https://pytorch.org/ instructions to install torchvision.")
+        print("torchvision is not installed. Use `pip install torchvision` to install torchvision.")
         exit(1)
 
     import time
@@ -55,14 +54,20 @@ def main(pool:str="smart", max_workers:int=0):
     from concurrent.futures import Future
     from typing import Dict, Union
 
-    from . import models
-    from .data_utils import prepare_data
-    from .model_utils import train_single_fold, ErrorInfo, ProgressInfo, TrainingResult
-    from .visualization import plot_results, print_results_table
-    from .config import EPOCHS
+    import os
+    import sys
+
+    self_folder = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+    sys.path.append(self_folder)
+
+    import models
+    from data_utils import prepare_data
+    from model_utils import train_single_fold, ErrorInfo, ProgressInfo, TrainingResult
+    from visualization import plot_results, print_results_table
+    from config import EPOCHS
 
     if max_workers == 0:
-        max_workers = None
+        max_workers = os.cpu_count()
 
     model_classes = [
         cls for cls in models.__dict__.values()
@@ -117,12 +122,9 @@ def main(pool:str="smart", max_workers:int=0):
         elif pool == "multiprocessing.Pool":
             import multiprocessing
             process_pool = multiprocessing.Pool(processes=max_workers)
-        elif pool == "joblib.Parallel(backend='locky')":
+        elif pool == "joblib.Parallel(backend='loky')":
             from joblib import Parallel, delayed
-            process_pool = Parallel(n_jobs=max_workers, backend='locky', return_as="generator")
-        elif pool == "joblib.Parallel(backend='multiprocessing')":
-            from joblib import Parallel, delayed
-            process_pool = Parallel(n_jobs=max_workers, backend='multiprocessing', return_as="generator")
+            process_pool = Parallel(n_jobs=max_workers, backend='loky', return_as="generator")
         elif pool == "joblib.Parallel(backend='threading')":
             from joblib import Parallel, delayed
             process_pool = Parallel(n_jobs=max_workers, backend='threading', return_as="generator")

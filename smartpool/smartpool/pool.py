@@ -78,7 +78,7 @@ class Pool(ABC):
         args:Optional[Tuple[Any]]=None, kwargs:Optional[Dict[str, Any]]=None,
         need_cpu_cores:int=1, need_cpu_mem:int=0,
         need_gpu_cores:int=0, need_gpu_mem:int=0
-    ):
+    )->Future:
         import threading
         from .task import Task
 
@@ -164,7 +164,7 @@ class Pool(ABC):
         need_gpu_mem:Union[int, Iterable[int]]=0,
         timeout:Optional[Union[float, int]]=None,
         chunksize:int=1
-    ):
+    )->Iterable[Any]:
         from functools import partial
         import itertools
         import time
@@ -216,7 +216,7 @@ class Pool(ABC):
         need_gpu_mem:Union[int, Iterable[int]]=0,
         timeout:Optional[Union[float, int]]=None,
         chunksize:int=1
-    ):
+    )->Iterable[Any]:
         args_iterable = ((item,) for item in iterable)
         
         return self.starmap(
