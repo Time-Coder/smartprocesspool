@@ -13,5 +13,5 @@ for file in files:
     if file.endswith(".whl") and os.path.getmtime(dist_dir + "/" + file) > newest_mtime:
         newest_file = file
 
-subprocess.check_call([sys.executable, "-m", "pip", "uninstall", f"{dist_dir}/{newest_file}"])
+subprocess.check_call([sys.executable, "-m", "pip", "uninstall", f"{dist_dir}/{newest_file}", "-y"])
 subprocess.check_call([sys.executable, "-m", "pip", "install", f"{dist_dir}/{newest_file}", "--upgrade"])
