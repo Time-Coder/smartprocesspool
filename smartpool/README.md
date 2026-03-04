@@ -42,7 +42,6 @@ from smartpool import ProcessPool, DataSize
 
 
 # Tasks can specify their resource requirements
-# should defined in other file, can't defined in main module
 def memory_intensive_task(data):
     # Your computation here
     return processed_data
@@ -78,7 +77,6 @@ limit_num_single_thread()
 
 import torch
 
-# should defined in other file, can't defined in main module
 def training_task():
     device = best_device() # <-- get best suitable device at init time
     old_device = device

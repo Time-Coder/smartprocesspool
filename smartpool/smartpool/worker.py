@@ -72,11 +72,11 @@ class Worker(ABC):
         return len(self.imported_modules & task.module_deps) / len(self.imported_modules)
 
     @staticmethod
-    def _changing_device(cmd_queue:Queue[Optional[str]]):
+    def _changing_device(cmd_queue:Queue[Optional[str]], current_thread_id):
         from .utils import _set_best_device
         while True:
             device = cmd_queue.get()
-            _set_best_device(device)
+            _set_best_device(device, current_thread_id)
 
     @staticmethod
     def run(
@@ -99,7 +99,8 @@ class Worker(ABC):
         if change_device_cmd_queue is not None:
             import threading
 
-            change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_queue,), daemon=True, name="changing_device")
+            current_thread_id = threading.get_ident()
+            change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_queue, current_thread_id), daemon=True, name="changing_device")
             change_device_thread.start()
 
         while True:

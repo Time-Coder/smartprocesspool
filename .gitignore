@@ -9,3 +9,4 @@ data
 *.png
 .vscode
 .venv*
+doc
