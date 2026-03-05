@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Optional, Callable, Any, Dict, Tuple, Set
+from typing import TYPE_CHECKING, Optional, Callable, Any, Dict, Tuple
 
 from ..worker import Worker
 

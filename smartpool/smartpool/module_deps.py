@@ -1,9 +1,8 @@
 import sys
 import warnings
 import functools
-import itertools
 from types import ModuleType
-from typing import Iterable, Set
+from typing import Set
 
 
 def _good_module_name(module_name:str, module_names:Set[str])->bool:
