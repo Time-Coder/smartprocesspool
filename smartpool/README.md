@@ -258,7 +258,7 @@ class ThreadPool:
         use_torch:bool=False
     ): ...
         """
-        Initializes a new ProcessPool instance.
+        Initializes a new ThreadPool instance.
 
         Same as ProcessPool
         """
