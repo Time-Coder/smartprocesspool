@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Tuple, Any, Optional, Callable
+from typing import TYPE_CHECKING, Dict, Tuple, Any, Optional, Callable, List
 
 from ..pool import Pool
 
@@ -49,11 +49,11 @@ class ProcessPool(Pool):
 
         self._process_name_prefix:str = process_name_prefix
         
-        self._feeding_queue:queue.SimpleQueue[Tuple[Task, SimpleQueue]] = queue.SimpleQueue()
+        self._feeding_queue:queue.SimpleQueue[Task] = queue.SimpleQueue()
         self._feeding_thread = threading.Thread(target=self._feeding, daemon=True, name="feeding")
         self._feeding_thread.start()
 
-    def _take_resource(self, task:Task):
+    def _take_resource(self, task:Task)->None:
         with self._sys_info_lock:
             self._sys_info.cpu_cores_free -= task.need_cpu_cores
             self._sys_info.cpu_mem_free -= task.estimated_need_cpu_mem
@@ -62,43 +62,55 @@ class ProcessPool(Pool):
                 self._sys_info.gpu_infos[task_gpu_id].n_cores_free -= task.need_gpu_cores
                 self._sys_info.gpu_infos[task_gpu_id].mem_free -= task.need_gpu_mem
 
-    def _release_resource(self, task:Task):
+    def _release_resource(self, task:Task)->None:
         with self._sys_info_lock:
             self._sys_info.cpu_cores_free += task.need_cpu_cores
             worker:ProcessWorker = task.worker
-            hold_cpu_mem = max(worker.cached_rss - task.mem_before_enter, 0)
-            self._sys_info.cpu_mem_free += max(task.need_cpu_mem - hold_cpu_mem, 0)
+            hold_cpu_mem = worker.cached_rss - task.mem_before_enter
+            released_cpu_mem = task.estimated_need_cpu_mem - hold_cpu_mem
+            self._sys_info.cpu_mem_free += released_cpu_mem
             task_gpu_id:int = task.gpu_id
             if task_gpu_id != -1:
                 self._sys_info.gpu_infos[task_gpu_id].n_cores_free += task.need_gpu_cores
                 self._sys_info.gpu_infos[task_gpu_id].mem_free += task.need_gpu_mem
 
-    def _estimate_need_cpu_cores(self, task):
+    def _estimate_need_cpu_cores(self, task:Task)->float:
         return task.need_cpu_cores
     
-    def _estimate_need_cpu_mem(self, task):
+    def _estimate_need_cpu_mem(self, task:Task)->float:
         worker:ProcessWorker = task.worker
         task.mem_before_enter = worker.cached_rss
         return max(0, task.need_cpu_mem - task.modules_overlap_ratio * worker.cached_rss)
     
-    def _estimate_need_gpu_cores(self, task, gpu_id):
+    def _estimate_need_gpu_cores(self, task:Task, gpu_id:int)->float:
         return task.need_gpu_cores
+
+    def _sorted_idle_workers(self, exclude:ProcessWorker)->Tuple[List[ProcessWorker], int]:
+        workers:List[ProcessWorker] = []
+        total_hold_mem:int = 0
+        for worker in self._workers:
+            if not worker.is_working and worker is not exclude and worker.cached_rss > 0:
+                workers.append(worker)
+                total_hold_mem += worker.cached_rss
+
+        workers.sort(key=lambda worker: worker.cached_rss, reverse=True)
+        return workers, total_hold_mem
 
     def _put_task(self, task:Task)->None:
         self._take_resource(task)
         worker:ProcessWorker = task.worker
         worker.is_working = True
         worker.imported_modules.update(task.module_deps)
-        self._feeding_queue.put((task, worker.task_queue))
+        self._feeding_queue.put(task)
         
     def _feeding(self)->None:
         while not self._shutdown:
-            task, task_queue = self._feeding_queue.get()
+            task = self._feeding_queue.get()
             if task.future.cancelled():
                 continue
 
             try:
-                task_queue.put(task.info())
+                task.worker.add_task(task)
                 task.future.set_running_or_notify_cancel()
             except BaseException as e:
                 task.future.set_exception(e)

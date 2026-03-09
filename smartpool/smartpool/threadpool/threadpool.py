@@ -140,7 +140,7 @@ class ThreadPool(Pool):
         worker:ThreadWorker = task.worker
         worker.is_working = True
         task.future.set_running_or_notify_cancel()
-        worker.task_queue.put(task)
+        worker.add_task(task)
 
     def _add_worker(self)->ThreadWorker:
         from .threadworker import ThreadWorker

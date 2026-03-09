@@ -226,7 +226,7 @@ class Pool(ABC):
             self._shutdown = True
 
             for worker in self._workers:
-                worker.stop()
+                worker.stop(wait=False, clear=False)
 
             if cancel_futures:
                 for task in self._tasks.values():
@@ -262,7 +262,7 @@ class Pool(ABC):
                 self._release_resource(task)
                 self._postprocess_after_task_done()
     
-    def _postprocess_after_task_done(self):
+    def _postprocess_after_task_done(self)->None:
         should_pop_indices = []
         cancelled_task_ids = []
         for i, delayed_task in enumerate(self._delayed_tasks):
@@ -292,6 +292,9 @@ class Pool(ABC):
             for task in self._tasks.values():
                 self._try_move_to_gpu(task)
 
+    def _sorted_idle_workers(self, exclude:Worker)->Tuple[List[Worker], int]:
+        return [], 0
+
     def _choose_task_device(self, task:Task)->Optional[str]:
         from .worker import Worker
 
@@ -306,10 +309,23 @@ class Pool(ABC):
                 return None
 
             task.estimated_need_cpu_mem = self._estimate_need_cpu_mem(task)
-            if task.estimated_need_cpu_mem > self._sys_info.cpu_mem_free:
-                task.device = None
-                task.worker = None
-                return None
+            if task.estimated_need_cpu_mem > max(0, self._sys_info.cpu_mem_free):
+                if hasattr(task.worker, "cached_rss"):
+                    idle_workers, total_hold_mem = self._sorted_idle_workers(exclude=task.worker)
+                    if task.estimated_need_cpu_mem > self._sys_info.cpu_mem_free + total_hold_mem:
+                        task.device = None
+                        task.worker = None
+                        return None
+                    
+                    for idle_worker in idle_workers:
+                        self._sys_info.cpu_mem_free += idle_worker.cached_rss
+                        idle_worker.stop(wait=False, clear=True)
+                        if task.estimated_need_cpu_mem <= self._sys_info.cpu_mem_free:
+                            break
+                else:
+                    task.device = None
+                    task.worker = None
+                    return None
 
             if not self._torch_cuda_available or (task.need_gpu_cores == 0 and task.need_gpu_mem == 0):
                 task.device = "cpu"
@@ -384,15 +400,15 @@ class Pool(ABC):
         pass
 
     @abstractmethod
-    def _estimate_need_gpu_cores(self, task:Task, gpu_id:int)->int:
+    def _estimate_need_gpu_cores(self, task:Task, gpu_id:int)->float:
         pass
 
     @abstractmethod
-    def _estimate_need_cpu_cores(self, task:Task)->int:
+    def _estimate_need_cpu_cores(self, task:Task)->float:
         pass
     
     @abstractmethod
-    def _estimate_need_cpu_mem(self, task:Task)->int:
+    def _estimate_need_cpu_mem(self, task:Task)->float:
         pass
 
     @abstractmethod

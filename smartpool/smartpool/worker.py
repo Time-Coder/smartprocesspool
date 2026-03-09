@@ -96,13 +96,16 @@ class Worker(ABC):
         from .utils import _set_best_device
         while True:
             device = cmd_queue.get()
+            if device is None:
+                break
+
             _set_best_device(device, current_thread_id)
 
     @staticmethod
     def run(
         task_queue:QueueLike[Optional[Tuple[str, Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]]],
         result_queue:QueueLike[Tuple[str, bool, Any]],
-        change_device_cmd_queue:Optional[QueueLike[str]],
+        change_device_cmd_queue:Optional[QueueLike[Optional[str]]],
         initializer:Optional[Callable[..., Any]],
         initargs:Tuple[Any, ...],
         initkwargs:Optional[Dict[str, Any]]
@@ -120,7 +123,7 @@ class Worker(ABC):
             import threading
 
             current_thread_id = threading.get_ident()
-            change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_queue, current_thread_id), daemon=True, name="changing_device")
+            change_device_thread = threading.Thread(target=Worker._changing_device, args=(change_device_cmd_queue, current_thread_id), name="changing_device")
             change_device_thread.start()
 
         while True:
@@ -139,3 +142,7 @@ class Worker(ABC):
                 success = False
 
             result_queue.put((task_id, success, result))
+
+        if change_device_cmd_queue is not None and change_device_thread.is_alive():
+            change_device_cmd_queue.put(None)
+            change_device_thread.join()

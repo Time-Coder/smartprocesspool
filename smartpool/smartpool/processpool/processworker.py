@@ -5,7 +5,6 @@ from ..worker import Worker
 
 if TYPE_CHECKING:
     from ..utils import QueueLike
-    from ..task import Task
 
     import multiprocessing as mp
     import psutil
@@ -102,7 +101,7 @@ class ProcessWorker(Worker):
         import psutil
 
         self.process_or_thread:mp.Process = self.ctx.Process(
-            target=ProcessWorker.run,
+            target=Worker.run,
             args=(self.task_queue, self.result_queue, self.change_device_cmd_queue),
             kwargs={"initializer": self.initializer, "initargs": self.initargs, "initkwargs": self.initkwargs},
             name=f"{self.name_prefix}{self.index}",
@@ -110,10 +109,6 @@ class ProcessWorker(Worker):
         )
         self.process_or_thread.start()
         self.process_info = psutil.Process(self.process_or_thread.pid)
-        
-    def terminate(self)->None:
-        self.process_or_thread.terminate()
-        self._clear()
 
     def join(self)->None:
         self.process_or_thread.join()

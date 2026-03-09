@@ -17,33 +17,43 @@ class InterpreterWorker(Worker):
         initkwargs:Optional[Dict[str, Any]],
         torch_cuda_available:bool
     ):
-        Worker.__init__(self, index, initializer, initargs, initkwargs)
-
         import concurrent.interpreters as interpreters
+
+        Worker.__init__(
+            self, index,
+            result_queue=result_queue,
+            task_queue_cls=interpreters.create_queue,
+            task_queue_args=(),
+            task_queue_kwargs={},
+            initializer=initializer,
+            initargs=initargs,
+            initkwargs=initkwargs
+        )
 
         if torch_cuda_available:
             self.change_device_cmd_queue:Optional[Queue[Optional[str]]] = interpreters.create_queue()
         else:
             self.change_device_cmd_queue:Optional[Queue[Optional[str]]] = None
 
-        self.result_queue:Queue[Tuple[str, bool, Any, int]] = result_queue
-        self.task_queue:Queue[Optional[Tuple[str, Callable[..., Any], Tuple[Any, ...], Dict[str, Any]]]] = interpreters.create_queue()
-
-        self.start()
-
     def change_device(self, device:str)->None:
         if self.change_device_cmd_queue is not None:
             self.change_device_cmd_queue.put(device)
 
-    def stop(self)->None:
-        self.task_queue.put(None)
+    def _clear(self)->None:
+        self.process_or_thread = None
+        self.interp = None
+        self._is_working = False
+        self.imported_modules.clear()
 
-    def start(self):
+    def start(self)->None:
+        if self.process_or_thread is not None:
+            return
+
         import concurrent.interpreters as interpreters
         from concurrent.interpreters import Interpreter
 
         self.interp:Interpreter = interpreters.create()
-        self.thread = self.interp.call_in_thread(
+        self.process_or_thread = self.interp.call_in_thread(
             InterpreterWorker.run,
             self.task_queue, self.result_queue, self.change_device_cmd_queue,
             initializer=self.initializer,
@@ -52,5 +62,6 @@ class InterpreterWorker(Worker):
         )
 
     def join(self)->None:
-        self.thread.join()
+        self.process_or_thread.join()
         self.interp.close()
+        self._clear()

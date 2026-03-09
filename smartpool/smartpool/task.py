@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid
 import sys
 from concurrent.futures import Future
-from typing import Tuple, Any, Dict, Optional, TYPE_CHECKING
+from typing import Tuple, Any, Dict, Optional, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .worker import Worker
@@ -10,9 +10,9 @@ if TYPE_CHECKING:
 
 class Task:
 
-    def __init__(self, func, args, kwargs, need_cpu_cores, need_cpu_mem, need_gpu_cores, need_gpu_mem, calculate_module_deps:bool):
+    def __init__(self, func:Callable[..., Any], args:Tuple[Any, ...], kwargs:Dict[str, Any], need_cpu_cores:float, need_cpu_mem:float, need_gpu_cores:float, need_gpu_mem:float, calculate_module_deps:bool):
         self.id:str = str(uuid.uuid4())
-        self.func = func
+        self.func:Callable[..., Any] = func
         self.args:Tuple[Any] = args
         self.kwargs:Dict[str, Any] = kwargs
         self.need_cpu_cores:int = need_cpu_cores

@@ -1,28 +1,37 @@
 from smartpool import ProcessPool, ThreadPool, DataSize, limit_num_single_thread
 limit_num_single_thread()
 
-import click
+import typer
+from typing import Literal
 
 
-@click.command(help=f"Use smartpool to do 5-fold cross validatation for 7 deep learning models for handwritten digit recognition task.")
-@click.option(
-    '--pool', default='smartpool.ProcessPool', type=click.Choice([
-        'smartpool.ProcessPool',
-        'smartpool.ThreadPool',
-        'multiprocessing.Pool',
-        'concurrent.futures.ProcessPoolExecutor',
-        'concurrent.futures.ThreadPoolExecutor',
-        "joblib.Parallel(backend='loky')",
-        "joblib.Parallel(backend='threading')",
-        "ray"
-    ]),
-    help="choose process pool implementations"
-)
-@click.option(
-    '--max_workers', default=0, type=int,
-    help='max number of workers to use, 0 to use all available cores'
-)
-def main(pool:str="smart", max_workers:int=0):
+app = typer.Typer(help="Use smartpool to do 5-fold cross validatation for 7 deep learning models for handwritten digit recognition task.")
+
+PoolChoice = Literal[
+    "smartpool.ProcessPool",
+    "smartpool.ThreadPool",
+    "multiprocessing.Pool",
+    "concurrent.futures.ProcessPoolExecutor",
+    "concurrent.futures.ThreadPoolExecutor",
+    "joblib.Parallel(backend='loky')",
+    "joblib.Parallel(backend='threading')",
+    "ray"
+]
+
+
+@app.command()
+def main(
+    pool: PoolChoice = typer.Option(
+        "smartpool.ProcessPool",
+        "--pool",
+        help="choose process pool implementations"
+    ),
+    max_workers: int = typer.Option(
+        0,
+        "--max_workers",
+        help="max number of workers to use, 0 to use all available cores"
+    )
+):
     import os
     os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
     
@@ -241,4 +250,4 @@ def main(pool:str="smart", max_workers:int=0):
 
 
 if __name__ == "__main__":
-    main()
+    app()

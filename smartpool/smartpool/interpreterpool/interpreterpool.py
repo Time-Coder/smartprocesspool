@@ -34,7 +34,7 @@ class InterpreterPool(Pool):
             need_module_deps=True
         )
 
-    def _take_resource(self, task):
+    def _take_resource(self, task:Task)->None:
         with self._sys_info_lock:
             self._sys_info.cpu_cores_free -= task.need_cpu_cores
             self._sys_info.cpu_mem_free -= task.estimated_need_cpu_mem
@@ -43,7 +43,7 @@ class InterpreterPool(Pool):
                 self._sys_info.gpu_infos[task_gpu_id].n_cores_free -= task.need_gpu_cores
                 self._sys_info.gpu_infos[task_gpu_id].mem_free -= task.need_gpu_mem
 
-    def _release_resource(self, task):
+    def _release_resource(self, task:Task)->None:
         with self._sys_info_lock:
             self._sys_info.cpu_cores_free += task.need_cpu_cores
             self._sys_info.cpu_mem_free += task.estimated_need_cpu_mem
@@ -52,13 +52,13 @@ class InterpreterPool(Pool):
                 self._sys_info.gpu_infos[task_gpu_id].n_cores_free += task.need_gpu_cores
                 self._sys_info.gpu_infos[task_gpu_id].mem_free += task.need_gpu_mem
 
-    def _estimate_need_cpu_cores(self, task):
+    def _estimate_need_cpu_cores(self, task:Task)->float:
         return task.need_cpu_cores
     
-    def _estimate_need_gpu_cores(self, task, gpu_id):
+    def _estimate_need_gpu_cores(self, task:Task, gpu_id:int)->float:
         return task.need_gpu_cores
     
-    def _estimate_need_cpu_mem(self, task):
+    def _estimate_need_cpu_mem(self, task:Task)->float:
         return (1 - task.modules_overlap_ratio) * task.need_cpu_mem
 
     def _put_task(self, task:Task)->None:
@@ -67,7 +67,7 @@ class InterpreterPool(Pool):
         worker.is_working = True
         worker.imported_modules.update(task.module_deps)
         task.future.set_running_or_notify_cancel()
-        worker.task_queue.put(task.info())
+        worker.add_task(task)
 
     def _add_worker(self)->InterpreterWorker:
         from .interpreterworker import InterpreterWorker

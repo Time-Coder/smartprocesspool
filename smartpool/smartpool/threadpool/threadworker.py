@@ -22,33 +22,42 @@ class ThreadWorker(Worker):
     ):
         Worker.__init__(
             self, index,
+            result_queue=result_queue,
+            task_queue_cls=SimpleQueue,
+            task_queue_args=(),
+            task_queue_kwargs={},
             initializer=initializer,
             initargs=initargs,
             initkwargs=initkwargs
         )
         self.name_prefix:str = name_prefix
-        self.task_queue:SimpleQueue[Task] = SimpleQueue()
-        self.result_queue:SimpleQueue[Tuple[str, bool, Any]] = result_queue
 
+    def add_task(self, task:Task)->None:
         self.start()
+        self.task_queue.put(task)
 
     def change_device(self, device:str)->None:
-        _set_best_device(device, self.thread.ident)
+        _set_best_device(device, self.process_or_thread.ident)
+
+    def _clear(self)->None:
+        self.process_or_thread = None
+        self._is_working = False
 
     def start(self)->None:
-        self.thread = threading.Thread(
+        if self.process_or_thread is not None:
+            return
+
+        self.process_or_thread = threading.Thread(
             target=ThreadWorker.run,
             name=f"{self.name_prefix}{self.index}",
             args=(self.task_queue, self.result_queue, self.initializer, self.initargs, self.initkwargs),
             daemon=True
         )
-        self.thread.start()
-
-    def stop(self)->None:
-        self.task_queue.put(None)
+        self.process_or_thread.start()
 
     def join(self)->None:
-        self.thread.join()
+        self.process_or_thread.join()
+        self._clear()
 
     @staticmethod
     def run(
