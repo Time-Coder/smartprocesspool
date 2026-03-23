@@ -18,8 +18,6 @@ class ThreadPool(Pool):
         max_tasks_per_child:Optional[int]=None,
         use_torch:bool=False
     ):
-        from queue import SimpleQueue
-
         Pool.__init__(
             self, max_workers=max_workers,
 
@@ -27,11 +25,12 @@ class ThreadPool(Pool):
             initargs=initargs,
             initkwargs=initkwargs,
 
-            result_queue_cls=SimpleQueue,
+            result_queue_cls=None,
 
             max_tasks_per_child=max_tasks_per_child,
             use_torch=use_torch,
-            need_module_deps=False
+            need_module_deps=False,
+            need_result_thread=False
         )
 
         self._thread_name_prefix:str = thread_name_prefix
@@ -147,7 +146,7 @@ class ThreadPool(Pool):
 
         worker = ThreadWorker(
             len(self._workers), self._thread_name_prefix,
-            self._result_queue,
+            thread_pool=self,
             initializer=self._initializer,
             initargs=self._initargs,
             initkwargs=self._initkwargs

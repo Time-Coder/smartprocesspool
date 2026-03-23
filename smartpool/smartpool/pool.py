@@ -32,7 +32,8 @@ class Pool(ABC):
 
         max_tasks_per_child:Optional[int],
         use_torch:bool,
-        need_module_deps:bool
+        need_module_deps:bool,
+        need_result_thread:bool
     ):
         self._init_sys_info()
 
@@ -61,13 +62,16 @@ class Pool(ABC):
         if result_queue_kwargs is None:
             result_queue_kwargs = {}
 
-        self._result_queue:QueueLike[Tuple[str, bool, Any]] = result_queue_cls(*result_queue_args, **result_queue_kwargs)
+        if result_queue_cls is not None:
+            self._result_queue:QueueLike[Tuple[str, bool, Any]] = result_queue_cls(*result_queue_args, **result_queue_kwargs)
+        
         self._workers:List[Worker] = []
         self._tasks:Dict[str, Task] = {}
         self._delayed_tasks:List[Task] = []
-        self._lock = threading.Lock()
-        self._shutdown = False
-        self._result_thread = None
+        self._lock:threading.Lock = threading.Lock()
+        self._shutdown:bool = False
+        self._need_result_thread:bool = need_result_thread
+        self._result_thread:Optional[threading.Thread] = None
 
     def submit(
         self, func:Callable[..., Any],
@@ -111,7 +115,7 @@ class Pool(ABC):
                 return task.future
             
             self._put_task(task)
-            if self._result_thread is None:
+            if self._need_result_thread and self._result_thread is None:
                 self._result_thread = threading.Thread(target=self._collecting_result, daemon=True, name="collecting_result")
                 self._result_thread.start()
 
@@ -242,25 +246,27 @@ class Pool(ABC):
     def __exit__(self, exc_type, exc_val, exc_tb)->None:
         self.shutdown(wait=True)
 
+    def _on_task_done(self, task_id:str, success:bool, result:Any)->None:
+        with self._lock:
+            task = self._tasks.pop(task_id)
+            if success:
+                task.future.set_result(result)
+            else:
+                task.future.set_exception(result)
+            
+            worker:Worker = task.worker
+            worker.is_working = False
+            worker.n_finished_tasks += 1
+            if self._max_tasks_per_child is not None and worker.n_finished_tasks >= self._max_tasks_per_child:
+                worker.stop(wait=False, clear=True)
+
+            self._release_resource(task)
+            self._postprocess_after_task_done()
+
     def _collecting_result(self)->None:
         while not self._shutdown:
             task_id, success, result = self._result_queue.get()
-
-            with self._lock:
-                task = self._tasks.pop(task_id)
-                if success:
-                    task.future.set_result(result)
-                else:
-                    task.future.set_exception(result)
-                
-                worker:Worker = task.worker
-                worker.is_working = False
-                worker.n_finished_tasks += 1
-                if self._max_tasks_per_child is not None and worker.n_finished_tasks >= self._max_tasks_per_child:
-                    worker.stop(wait=False, clear=True)
-
-                self._release_resource(task)
-                self._postprocess_after_task_done()
+            self._on_task_done(task_id, success, result)
     
     def _postprocess_after_task_done(self)->None:
         should_pop_indices = []

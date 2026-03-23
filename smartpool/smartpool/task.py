@@ -42,7 +42,7 @@ class Task:
         
         return -1
 
-    def exec(self)->Tuple[str, bool, Any]:
+    def exec(self)->Tuple[bool, Any]:
         try:
             result = self.func(*self.args, **self.kwargs)
             success = True
@@ -50,4 +50,4 @@ class Task:
             result = e
             success = False
 
-        return self.id, success, result
+        return success, result

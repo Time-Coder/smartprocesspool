@@ -9,20 +9,21 @@ from ..utils import _set_best_device
 
 if TYPE_CHECKING:
     from ..task import Task
+    from .threadpool import ThreadPool
 
 
 class ThreadWorker(Worker):
 
     def __init__(
         self, index:int, name_prefix:str,
-        result_queue:SimpleQueue[Tuple[str, bool, Any]],
+        thread_pool:ThreadPool,
         initializer:Optional[Callable[..., Any]],
         initargs:Tuple[Any, ...],
         initkwargs:Optional[Dict[str, Any]]
     ):
         Worker.__init__(
             self, index,
-            result_queue=result_queue,
+            result_queue=None,
             task_queue_cls=SimpleQueue,
             task_queue_args=(),
             task_queue_kwargs={},
@@ -31,6 +32,7 @@ class ThreadWorker(Worker):
             initkwargs=initkwargs
         )
         self.name_prefix:str = name_prefix
+        self.thread_pool:ThreadPool = thread_pool
 
     def add_task(self, task:Task)->None:
         self.start()
@@ -48,9 +50,8 @@ class ThreadWorker(Worker):
             return
 
         self.process_or_thread = threading.Thread(
-            target=ThreadWorker.run,
+            target=self.run,
             name=f"{self.name_prefix}{self.index}",
-            args=(self.task_queue, self.result_queue, self.initializer, self.initargs, self.initkwargs),
             daemon=True
         )
         self.process_or_thread.start()
@@ -59,21 +60,15 @@ class ThreadWorker(Worker):
         self.process_or_thread.join()
         self._clear()
 
-    @staticmethod
-    def run(
-        task_queue:SimpleQueue[Task],
-        result_queue:SimpleQueue[Tuple[str, bool, Any]],
-        initializer:Optional[Callable[..., Any]],
-        initargs:Tuple[Any, ...],
-        initkwargs:Optional[Dict[str, Any]]
-    ):
-        if initializer is not None:
-            initializer(*initargs, **initkwargs)
+    def run(self):
+        if self.initializer is not None:
+            self.initializer(*self.initargs, **self.initkwargs)
 
         while True:
-            task = task_queue.get()
+            task = self.task_queue.get()
             if task is None:
                 break
 
             _set_best_device(task.device)
-            result_queue.put(task.exec())
+            success, result = task.exec()
+            self.thread_pool._on_task_done(task.id, success, result)
